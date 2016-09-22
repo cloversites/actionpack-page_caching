@@ -1,4 +1,3 @@
-require 'fileutils'
 require 'active_support/core_ext/class/attribute_accessors'
 
 module ActionController
@@ -58,6 +57,11 @@ module ActionController
         # or <tt>:best_speed</tt> or an integer configuring the compression level.
         class_attribute :page_cache_compression
         self.page_cache_compression ||= false
+
+        # The storage mechanism for the cached content.
+        # Valid values are :file_system and :redis
+        class_attribute :page_cache_storage
+        self.page_cache_storage ||= :file_system
       end
 
       module ClassMethods
@@ -69,8 +73,7 @@ module ActionController
           path = page_cache_path(path)
 
           instrument_page_cache :expire_page, path do
-            File.delete(path) if File.exist?(path)
-            File.delete(path + '.gz') if File.exist?(path + '.gz')
+            storage_mechanism.remove_item(path)
           end
         end
 
@@ -82,11 +85,7 @@ module ActionController
           path = page_cache_path(path, extension)
 
           instrument_page_cache :write_page, path do
-            FileUtils.makedirs(File.dirname(path))
-            File.open(path, 'wb+') { |f| f.write(content) }
-            if gzip
-              Zlib::GzipWriter.open(path + '.gz', gzip) { |f| f.write(content) }
-            end
+            storage_mechanism.store_item(content, path, gzip)
           end
         end
 
@@ -140,6 +139,10 @@ module ActionController
 
           def instrument_page_cache(name, path)
             ActiveSupport::Notifications.instrument("#{name}.action_controller", path: path){ yield }
+          end
+
+          def storage_mechanism
+            ActionController::Caching::Storage::FileSystem
           end
       end
 
