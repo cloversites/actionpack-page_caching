@@ -60,12 +60,24 @@ module ActionController
         # or <tt>:best_speed</tt> or an integer configuring the compression level.
         class_attribute :page_cache_compression
         self.page_cache_compression ||= false
+
+        # Automatically set a specified mode for all newly-created directories,
+        # without respect to the current user’s umask settings.
+        class_attribute :page_cache_directory_mode
+        self.page_cache_directory_mode ||= nil
+
+        # Automatically set a specified mode for all newly-created files,
+        # without respect to the current user’s umask settings.
+        class_attribute :page_cache_file_mode
+        self.page_cache_file_mode ||= nil
       end
 
       class PageCache #:nodoc:
-        def initialize(cache_directory, default_extension, controller = nil)
+        def initialize(cache_directory, default_extension, directory_mode = nil, file_mode = nil, controller = nil)
           @cache_directory = cache_directory
           @default_extension = default_extension
+          @directory_mode = directory_mode
+          @file_mode = file_mode
           @controller = controller
         end
 
@@ -164,8 +176,9 @@ module ActionController
           end
 
           def write(content, path, gzip)
-            FileUtils.makedirs(File.dirname(path))
+            FileUtils.makedirs(File.dirname(path), mode: @directory_mode)
             File.open(path, "wb+") { |f| f.write(content) }
+            File.chmod(@file_mode, path) if @file_mode != nil
 
             if gzip
               Zlib::GzipWriter.open(path + ".gz", gzip) { |f| f.write(content) }
@@ -235,7 +248,7 @@ module ActionController
 
         private
           def page_cache
-            PageCache.new(page_cache_directory, default_static_extension)
+            PageCache.new(page_cache_directory, default_static_extension, page_cache_directory_mode, page_cache_file_mode)
           end
       end
 
@@ -293,7 +306,7 @@ module ActionController
 
       private
         def page_cache
-          PageCache.new(page_cache_directory, default_static_extension, self)
+          PageCache.new(page_cache_directory, default_static_extension, page_cache_directory_mode, page_cache_file_mode, self)
         end
     end
   end
