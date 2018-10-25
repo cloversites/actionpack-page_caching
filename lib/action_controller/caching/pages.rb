@@ -178,7 +178,23 @@ module ActionController
           def write(content, path, gzip)
             FileUtils.makedirs(File.dirname(path), mode: @directory_mode)
             File.open(path, "wb+") { |f| f.write(content) }
-            File.chmod(@file_mode, path) if @file_mode != nil
+            unless @file_mode.nil?
+              # If there are multiple users writing to the page cache in
+              # parallel, it is possible that the file may have been first
+              # created—or have been re-created and have become owned by—a
+              # different user by the time the next line of code is executed,
+              # and a user which is not the owner of a file cannot change its
+              # permissions (besides with richacls, which are not always
+              # available, e.g. if an EFS drive is in use).  Therefore, tolerate
+              # permission errors here.
+              #
+              # The error will be irrelevant anyway so long as the other/new
+              # owner sets the permission to the same value desired here.
+              begin
+                File.chmod(@file_mode, path)
+              rescue Errno::EPERM
+              end
+            end
 
             if gzip
               Zlib::GzipWriter.open(path + ".gz", gzip) { |f| f.write(content) }
